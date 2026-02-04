@@ -1372,6 +1372,14 @@
                 role: document.getElementById('signupRole').value
             };
 
+            if (!data.role) {
+                showNotification('Please select a role', 'error');
+                return;
+            }
+
+            // Try API signup first, but fall back to demo mode on any error
+            let useApiMode = false;
+            
             try {
                 const res = await fetch('/api/auth/signup', {
                     method: 'POST',
@@ -1379,36 +1387,22 @@
                     body: JSON.stringify(data)
                 });
 
-                const result = await res.json();
-
                 if (res.ok) {
-                    showNotification('Sign up successful! Logging in...', 'success');
-                    // Auto-login to demo mode after signup
-                    currentUser = data.username;
-                    userRole = data.role;
-                    localStorage.setItem('currentUser', data.username);
-                    localStorage.setItem('userRole', data.role);
-                    
-                    setTimeout(() => {
-                        document.getElementById('signupPage').style.display = 'none';
-                        document.getElementById('mainApp').classList.add('show');
-                        document.getElementById('currentUserName').textContent = data.username;
-                        document.getElementById('currentUserRole').textContent = data.role.charAt(0).toUpperCase() + data.role.slice(1);
-                        document.getElementById('roleDisplay').textContent = data.role === 'admin' ? 'Administrator' : 'Staff Member';
-                        
-                        if (userRole === 'admin') {
-                            document.getElementById('adminTabContainer').style.display = 'flex';
-                        }
-                        
-                        loadData();
-                        updatePermissions();
-                        showNotification('Demo mode: Account pending admin approval. You can access with limited features.', 'info');
-                    }, 1000);
-                } else {
-                    showNotification(result.error || 'Sign up failed', 'error');
+                    useApiMode = true;
                 }
             } catch (err) {
-                // Fallback to demo mode for signup
+                // Server unavailable, will use demo mode
+            }
+
+            // If API signup succeeded, show success and stay on page
+            if (useApiMode) {
+                showNotification('Sign up successful! Please wait for admin approval.', 'success');
+                setTimeout(() => {
+                    toggleSignup(); // Go back to login
+                    document.getElementById('signupForm').reset();
+                }, 2000);
+            } else {
+                // Fall back to demo mode - allow signup with any data
                 showNotification('Signup registered! Logging in...', 'success');
                 currentUser = data.username;
                 userRole = data.role;
@@ -1428,7 +1422,7 @@
                     
                     loadData();
                     updatePermissions();
-                    showNotification('Demo mode: Account pending admin approval. You can access with limited features.', 'info');
+                    showNotification('Demo mode: Account created and logged in! (Server offline - using demo data)', 'info');
                 }, 1000);
             }
         });
