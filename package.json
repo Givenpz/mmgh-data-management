@@ -1,7 +1,7 @@
 {
   "name": "mmgh-backend",
-  "version": "1.0.0",
-  "description": "Simple backend for MMGH Data Management - Express + Postgres",
+  "version": "2.0.0",
+  "description": "Professional MMGH Hospital Management System - Express + Postgres with Auth, Audit Logs & Email",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,9 +11,12 @@
     "node": ">=16"
   },
   "dependencies": {
+    "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.0",
+    "nodemailer": "^6.9.0",
     "pg": "^8.11.0"
   }
 }
