@@ -75,83 +75,48 @@
         .login-form input:focus, .login-form select:focus {
             border-color: var(--primary);
             outline: none;
-            async function loadPendingUsers() {
-                const container = document.getElementById('pendingUsersList');
-                // show loading spinner
-                container.innerHTML = '<div style="text-align:center; color: var(--gray);">Loading pending users...<div class="spinner"></div></div>';
+            box-shadow: 0 0 0 3px rgba(44, 90, 160, 0.1);
+        }
 
-                const token = localStorage.getItem('userToken');
-                if (!token) {
-                    // No token yet - show waiting state and start retry
-                    container.innerHTML = '<div style="text-align:center; color: var(--gray);">Waiting for server connection... Retrying shortly.<div class="spinner"></div></div>';
-                    schedulePendingUsersRetry();
-                    return;
-                }
+        .password-group {
+            position: relative;
+            display: flex;
+            gap: 0;
+        }
 
-                // If we have a retry timer, clear it
-                if (pendingUsersRetryTimer) {
-                    clearTimeout(pendingUsersRetryTimer);
-                    pendingUsersRetryTimer = null;
-                    pendingUsersRetryAttempt = 0;
-                }
+        .password-group input {
+            flex: 1;
+            border-radius: 5px 0 0 5px;
+        }
 
-                try {
-                    const res = await fetch('/api/admin/pending-users', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+        .password-toggle {
+            padding: 12px 12px;
+            border: 1px solid #ddd;
+            border-left: none;
+            border-radius: 0 5px 5px 0;
+            background: #f8f9fa;
+            color: var(--gray);
+            cursor: pointer;
+            transition: background 0.3s, color 0.3s;
+        }
 
-                    if (!res.ok) {
-                        container.innerHTML = '<p style="color: var(--danger); text-align:center;">Failed to load pending users.</p>';
-                        return;
-                    }
+        .password-toggle:hover {
+            background: #e9ecef;
+            color: var(--primary);
+        }
 
-                    const users = await res.json();
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
 
-                    if (users.length === 0) {
-                        container.innerHTML = '<p style="color: var(--gray); text-align: center;">No pending approvals</p>';
-                        return;
-                    }
-
-                    container.innerHTML = users.map(u => `
-                        <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--warning);">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <p style="margin: 0; font-weight: 600;">${u.full_name} (${u.username})</p>
-                                    <p style="margin: 5px 0 0 0; font-size: 0.9rem; color: var(--gray);">${u.email} • ${u.role}</p>
-                                    <p style="margin: 3px 0 0 0; font-size: 0.85rem; color: var(--gray);">Applied: ${new Date(u.created_at).toLocaleDateString()}</p>
-                                </div>
-                                <div style="display: flex; gap: 10px;">
-                                    <button class="btn btn-success" onclick="approveUser(${u.id})" style="padding: 8px 16px; font-size: 0.9rem;">
-                                        <i class="fas fa-check"></i> Approve
-                                    </button>
-                                    <button class="btn btn-danger" onclick="rejectUser(${u.id})" style="padding: 8px 16px; font-size: 0.9rem;">
-                                        <i class="fas fa-times"></i> Reject
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `).join('');
-                } catch (err) {
-                    console.error('Failed to load pending users', err);
-                    container.innerHTML = '<p style="color: var(--danger); text-align:center;">Error loading pending users. Retrying...</p><div class="spinner"></div>';
-                    schedulePendingUsersRetry();
-                }
-            }
-
-            function schedulePendingUsersRetry() {
-                // exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s
-                pendingUsersRetryAttempt = (pendingUsersRetryAttempt || 0) + 1;
-                const delay = Math.min(30000, 1000 * Math.pow(2, pendingUsersRetryAttempt - 1));
-                if (pendingUsersRetryTimer) clearTimeout(pendingUsersRetryTimer);
-                pendingUsersRetryTimer = setTimeout(() => {
-                    const token = localStorage.getItem('userToken');
-                    if (token) {
-                        loadPendingUsers();
-                    } else {
-                        schedulePendingUsersRetry();
-                    }
-                }, delay);
-            }
+        .remember-me input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
             accent-color: var(--primary);
         }
 
@@ -1639,18 +1604,36 @@
 
         // Admin functions
         async function loadPendingUsers() {
-            try {
-                const token = localStorage.getItem('userToken');
-                if (!token) return;
+            const container = document.getElementById('pendingUsersList');
+            // show loading spinner
+            container.innerHTML = '<div style="text-align:center; color: var(--gray);">Loading pending users...<div class="spinner"></div></div>';
 
+            const token = localStorage.getItem('userToken');
+            if (!token) {
+                // No token yet - show waiting state and start retry
+                container.innerHTML = '<div style="text-align:center; color: var(--gray);">Waiting for server connection... Retrying shortly.<div class="spinner"></div></div>';
+                schedulePendingUsersRetry();
+                return;
+            }
+
+            // If we have a retry timer, clear it
+            if (pendingUsersRetryTimer) {
+                clearTimeout(pendingUsersRetryTimer);
+                pendingUsersRetryTimer = null;
+                pendingUsersRetryAttempt = 0;
+            }
+
+            try {
                 const res = await fetch('/api/admin/pending-users', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
 
-                if (!res.ok) return;
+                if (!res.ok) {
+                    container.innerHTML = '<p style="color: var(--danger); text-align:center;">Failed to load pending users.</p>';
+                    return;
+                }
 
                 const users = await res.json();
-                const container = document.getElementById('pendingUsersList');
 
                 if (users.length === 0) {
                     container.innerHTML = '<p style="color: var(--gray); text-align: center;">No pending approvals</p>';
@@ -1677,8 +1660,25 @@
                     </div>
                 `).join('');
             } catch (err) {
-                console.error('Error loading pending users:', err);
+                console.error('Failed to load pending users', err);
+                container.innerHTML = '<p style="color: var(--danger); text-align:center;">Error loading pending users. Retrying...</p><div class="spinner"></div>';
+                schedulePendingUsersRetry();
             }
+        }
+
+        function schedulePendingUsersRetry() {
+            // exponential backoff: 1s, 2s, 4s, 8s, ... up to 30s
+            pendingUsersRetryAttempt = (pendingUsersRetryAttempt || 0) + 1;
+            const delay = Math.min(30000, 1000 * Math.pow(2, pendingUsersRetryAttempt - 1));
+            if (pendingUsersRetryTimer) clearTimeout(pendingUsersRetryTimer);
+            pendingUsersRetryTimer = setTimeout(() => {
+                const token = localStorage.getItem('userToken');
+                if (token) {
+                    loadPendingUsers();
+                } else {
+                    schedulePendingUsersRetry();
+                }
+            }, delay);
         }
 
         async function approveUser(userId) {
