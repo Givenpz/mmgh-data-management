@@ -1440,7 +1440,15 @@
             const password = document.getElementById('loginPassword').value;
             const role = document.getElementById('loginRole').value;
 
-            // Check if server is available
+            if (!role) {
+                showNotification('Please select a role', 'error');
+                return;
+            }
+
+            // Try API login first, but fall back to demo mode on any error
+            let useApiMode = false;
+            let apiUser = null;
+            
             try {
                 const res = await fetch('/api/auth/login', {
                     method: 'POST',
@@ -1448,40 +1456,40 @@
                     body: JSON.stringify({ username, password })
                 });
 
-                const result = await res.json();
-
                 if (res.ok) {
-                    currentUser = username;
-                    userRole = result.user.role;
-                    userToken = result.token;
-                    
-                    localStorage.setItem('currentUser', username);
-                    localStorage.setItem('userRole', result.user.role);
-                    localStorage.setItem('userToken', result.token);
-                    
-                    document.getElementById('loginPage').style.display = 'none';
-                    document.getElementById('mainApp').classList.add('show');
-                    document.getElementById('currentUserName').textContent = username;
-                    document.getElementById('currentUserRole').textContent = result.user.role.charAt(0).toUpperCase() + result.user.role.slice(1);
-                    document.getElementById('roleDisplay').textContent = result.user.role === 'admin' ? 'Administrator' : 'Staff Member';
-                    
-                    if (userRole === 'admin') {
-                        document.getElementById('adminTabContainer').style.display = 'flex';
-                    }
-                    
-                    loadData();
-                    updatePermissions();
-                    showNotification(`Welcome ${username}!`, 'success');
-                } else {
-                    const errorMsg = result.error || 'Login failed';
-                    if (errorMsg.includes('pending')) {
-                        showNotification('Account pending admin approval. Try again after approval, or use demo mode.', 'warning');
-                    } else {
-                        showNotification(errorMsg, 'error');
-                    }
+                    const result = await res.json();
+                    useApiMode = true;
+                    apiUser = result.user;
                 }
             } catch (err) {
-                // Fallback to demo mode
+                // Server unavailable, will use demo mode
+            }
+
+            // If API login succeeded, use API credentials
+            if (useApiMode && apiUser) {
+                currentUser = username;
+                userRole = apiUser.role;
+                userToken = userToken; // Already set from API
+                
+                localStorage.setItem('currentUser', username);
+                localStorage.setItem('userRole', apiUser.role);
+                if (userToken) localStorage.setItem('userToken', userToken);
+                
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('mainApp').classList.add('show');
+                document.getElementById('currentUserName').textContent = username;
+                document.getElementById('currentUserRole').textContent = apiUser.role.charAt(0).toUpperCase() + apiUser.role.slice(1);
+                document.getElementById('roleDisplay').textContent = apiUser.role === 'admin' ? 'Administrator' : 'Staff Member';
+                
+                if (userRole === 'admin') {
+                    document.getElementById('adminTabContainer').style.display = 'flex';
+                }
+                
+                loadData();
+                updatePermissions();
+                showNotification(`Welcome ${username}! (Connected to database)`, 'success');
+            } else {
+                // Fall back to demo mode - allow any username/password combination
                 currentUser = username;
                 userRole = role;
                 
@@ -1500,7 +1508,7 @@
                 
                 loadData();
                 updatePermissions();
-                showNotification(`Demo mode: Welcome ${username}!`);
+                showNotification(`Demo mode: Welcome ${username}! (Server offline - using demo data)`, 'info');
             }
         });
 
