@@ -1362,23 +1362,26 @@
             const savedUser = localStorage.getItem('currentUser');
             const savedRole = localStorage.getItem('userRole');
             const rememberMe = localStorage.getItem('rememberMe');
+            const savedToken = localStorage.getItem('userToken');
             
-            if (savedUser && savedRole && rememberMe === 'true') {
-                // User was remembered, restore session
+            // Restore session if user was remembered OR a valid token exists
+            if (savedUser && savedRole && (rememberMe === 'true' || savedToken)) {
                 currentUser = savedUser;
                 userRole = savedRole;
-                userToken = localStorage.getItem('userToken') || null;
-                
+                userToken = savedToken || null;
+
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('mainApp').classList.add('show');
                 document.getElementById('currentUserName').textContent = savedUser;
                 document.getElementById('currentUserRole').textContent = savedRole.charAt(0).toUpperCase() + savedRole.slice(1);
                 document.getElementById('roleDisplay').textContent = savedRole === 'admin' ? 'Administrator' : 'Staff Member';
-                
+
                 if (savedRole === 'admin') {
                     document.getElementById('adminTabContainer').style.display = 'flex';
+                    // attempt to load pending users if connected to API
+                    if (userToken) loadPendingUsers();
                 }
-                
+
                 loadData();
                 updatePermissions();
                 showNotification(`Welcome back ${savedUser}!`, 'success');
@@ -1493,6 +1496,7 @@
             // Try API login first, but fall back to demo mode on any error
             let useApiMode = false;
             let apiUser = null;
+            let apiToken = null;
             
             try {
                 const res = await fetch('/api/auth/login', {
@@ -1505,6 +1509,9 @@
                     const result = await res.json();
                     useApiMode = true;
                     apiUser = result.user;
+                    apiToken = result.token;
+                } else {
+                    try { const errRes = await res.json(); if (errRes && errRes.error) showNotification(errRes.error, 'warning'); } catch (e) {}
                 }
             } catch (err) {
                 // Server unavailable, will use demo mode
@@ -1514,7 +1521,7 @@
             if (useApiMode && apiUser) {
                 currentUser = username;
                 userRole = apiUser.role;
-                userToken = userToken; // Already set from API
+                userToken = apiToken || null;
                 
                 localStorage.setItem('currentUser', username);
                 localStorage.setItem('userRole', apiUser.role);
@@ -1529,6 +1536,8 @@
                 
                 if (userRole === 'admin') {
                     document.getElementById('adminTabContainer').style.display = 'flex';
+                    // load pending users from API if token available
+                    if (userToken) loadPendingUsers();
                 }
                 
                 loadData();
