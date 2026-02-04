@@ -105,6 +105,26 @@
             color: var(--primary);
         }
 
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
+        .remember-me input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .remember-me label {
+            cursor: pointer;
+            user-select: none;
+        }
+
         .login-btn {
             padding: 12px;
             background: var(--primary);
@@ -629,6 +649,10 @@
                     <button type="button" class="password-toggle" onclick="togglePasswordVisibility('loginPassword')">
                         <i class="fas fa-eye"></i>
                     </button>
+                </div>
+                <div class="remember-me">
+                    <input type="checkbox" id="rememberMe">
+                    <label for="rememberMe">Remember me</label>
                 </div>
                 <button type="submit" class="login-btn">Login</button>
                 <button type="button" class="login-btn" style="background: var(--secondary); margin-top: 10px;" onclick="toggleSignup()">
@@ -1333,7 +1357,33 @@
             return permissions[userRole][action] || false;
         }
 
-        // Toggle between login and signup
+        // Check authentication on page load
+        function checkAuth() {
+            const savedUser = localStorage.getItem('currentUser');
+            const savedRole = localStorage.getItem('userRole');
+            const rememberMe = localStorage.getItem('rememberMe');
+            
+            if (savedUser && savedRole && rememberMe === 'true') {
+                // User was remembered, restore session
+                currentUser = savedUser;
+                userRole = savedRole;
+                userToken = localStorage.getItem('userToken') || null;
+                
+                document.getElementById('loginPage').style.display = 'none';
+                document.getElementById('mainApp').classList.add('show');
+                document.getElementById('currentUserName').textContent = savedUser;
+                document.getElementById('currentUserRole').textContent = savedRole.charAt(0).toUpperCase() + savedRole.slice(1);
+                document.getElementById('roleDisplay').textContent = savedRole === 'admin' ? 'Administrator' : 'Staff Member';
+                
+                if (savedRole === 'admin') {
+                    document.getElementById('adminTabContainer').style.display = 'flex';
+                }
+                
+                loadData();
+                updatePermissions();
+                showNotification(`Welcome back ${savedUser}!`, 'success');
+            }
+        }
         function toggleSignup() {
             document.getElementById('loginPage').style.display = document.getElementById('loginPage').style.display === 'none' ? 'flex' : 'none';
             document.getElementById('signupPage').style.display = document.getElementById('signupPage').style.display === 'none' ? 'flex' : 'none';
@@ -1433,6 +1483,7 @@
             const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
             const role = document.getElementById('loginRole').value;
+            const rememberMe = document.getElementById('rememberMe').checked;
 
             if (!role) {
                 showNotification('Please select a role', 'error');
@@ -1467,6 +1518,7 @@
                 
                 localStorage.setItem('currentUser', username);
                 localStorage.setItem('userRole', apiUser.role);
+                localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false');
                 if (userToken) localStorage.setItem('userToken', userToken);
                 
                 document.getElementById('loginPage').style.display = 'none';
@@ -1489,6 +1541,7 @@
                 
                 localStorage.setItem('currentUser', username);
                 localStorage.setItem('userRole', role);
+                localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false');
                 
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('mainApp').classList.add('show');
@@ -1514,6 +1567,7 @@
             localStorage.removeItem('currentUser');
             localStorage.removeItem('userRole');
             localStorage.removeItem('userToken');
+            localStorage.removeItem('rememberMe');
             
             document.getElementById('loginPage').style.display = 'flex';
             document.getElementById('mainApp').classList.remove('show');
