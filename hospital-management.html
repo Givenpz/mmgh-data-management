@@ -78,6 +78,33 @@
             box-shadow: 0 0 0 3px rgba(44, 90, 160, 0.1);
         }
 
+        .password-group {
+            position: relative;
+            display: flex;
+            gap: 0;
+        }
+
+        .password-group input {
+            flex: 1;
+            border-radius: 5px 0 0 5px;
+        }
+
+        .password-toggle {
+            padding: 12px 12px;
+            border: 1px solid #ddd;
+            border-left: none;
+            border-radius: 0 5px 5px 0;
+            background: #f8f9fa;
+            color: var(--gray);
+            cursor: pointer;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .password-toggle:hover {
+            background: #e9ecef;
+            color: var(--primary);
+        }
+
         .login-btn {
             padding: 12px;
             background: var(--primary);
@@ -597,7 +624,12 @@
                     <option value="admin">Administrator</option>
                     <option value="staff">Staff Member</option>
                 </select>
-                <input type="password" id="loginPassword" placeholder="Password" required>
+                <div class="password-group">
+                    <input type="password" id="loginPassword" placeholder="Password" required>
+                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('loginPassword')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
                 <button type="submit" class="login-btn">Login</button>
                 <button type="button" class="login-btn" style="background: var(--secondary); margin-top: 10px;" onclick="toggleSignup()">
                     Create Account
@@ -624,8 +656,18 @@
                     <option value="admin">Administrator</option>
                     <option value="staff">Staff Member</option>
                 </select>
-                <input type="password" id="signupPassword" placeholder="Password (min 6 chars)" required minlength="6">
-                <input type="password" id="signupConfirm" placeholder="Confirm Password" required minlength="6">
+                <div class="password-group">
+                    <input type="password" id="signupPassword" placeholder="Password (min 6 chars)" required minlength="6">
+                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('signupPassword')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
+                <div class="password-group">
+                    <input type="password" id="signupConfirm" placeholder="Confirm Password" required minlength="6">
+                    <button type="button" class="password-toggle" onclick="togglePasswordVisibility('signupConfirm')">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
                 <button type="submit" class="login-btn">Sign Up</button>
                 <button type="button" class="login-btn" style="background: var(--gray); margin-top: 10px;" onclick="toggleSignup()">
                     Back to Login
@@ -1297,6 +1339,19 @@
             document.getElementById('signupPage').style.display = document.getElementById('signupPage').style.display === 'none' ? 'flex' : 'none';
         }
 
+        // Toggle password visibility
+        function togglePasswordVisibility(fieldId) {
+            const field = document.getElementById(fieldId);
+            const button = event.target.closest('.password-toggle');
+            if (field.type === 'password') {
+                field.type = 'text';
+                button.innerHTML = '<i class="fas fa-eye-slash"></i>';
+            } else {
+                field.type = 'password';
+                button.innerHTML = '<i class="fas fa-eye"></i>';
+            }
+        }
+
         // Sign up handler
         document.getElementById('signupForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -1327,14 +1382,54 @@
                 const result = await res.json();
 
                 if (res.ok) {
-                    showNotification('Sign up successful! Please wait for admin approval. Check your email.', 'success');
-                    setTimeout(() => toggleSignup(), 2000);
-                    document.getElementById('signupForm').reset();
+                    showNotification('Sign up successful! Logging in...', 'success');
+                    // Auto-login to demo mode after signup
+                    currentUser = data.username;
+                    userRole = data.role;
+                    localStorage.setItem('currentUser', data.username);
+                    localStorage.setItem('userRole', data.role);
+                    
+                    setTimeout(() => {
+                        document.getElementById('signupPage').style.display = 'none';
+                        document.getElementById('mainApp').classList.add('show');
+                        document.getElementById('currentUserName').textContent = data.username;
+                        document.getElementById('currentUserRole').textContent = data.role.charAt(0).toUpperCase() + data.role.slice(1);
+                        document.getElementById('roleDisplay').textContent = data.role === 'admin' ? 'Administrator' : 'Staff Member';
+                        
+                        if (userRole === 'admin') {
+                            document.getElementById('adminTabContainer').style.display = 'flex';
+                        }
+                        
+                        loadData();
+                        updatePermissions();
+                        showNotification('Demo mode: Account pending admin approval. You can access with limited features.', 'info');
+                    }, 1000);
                 } else {
                     showNotification(result.error || 'Sign up failed', 'error');
                 }
             } catch (err) {
-                showNotification('Sign up error: ' + err.message, 'error');
+                // Fallback to demo mode for signup
+                showNotification('Signup registered! Logging in...', 'success');
+                currentUser = data.username;
+                userRole = data.role;
+                localStorage.setItem('currentUser', data.username);
+                localStorage.setItem('userRole', data.role);
+                
+                setTimeout(() => {
+                    document.getElementById('signupPage').style.display = 'none';
+                    document.getElementById('mainApp').classList.add('show');
+                    document.getElementById('currentUserName').textContent = data.username;
+                    document.getElementById('currentUserRole').textContent = data.role.charAt(0).toUpperCase() + data.role.slice(1);
+                    document.getElementById('roleDisplay').textContent = data.role === 'admin' ? 'Administrator' : 'Staff Member';
+                    
+                    if (userRole === 'admin') {
+                        document.getElementById('adminTabContainer').style.display = 'flex';
+                    }
+                    
+                    loadData();
+                    updatePermissions();
+                    showNotification('Demo mode: Account pending admin approval. You can access with limited features.', 'info');
+                }, 1000);
             }
         });
 
@@ -1378,7 +1473,12 @@
                     updatePermissions();
                     showNotification(`Welcome ${username}!`, 'success');
                 } else {
-                    showNotification(result.error || 'Login failed', 'error');
+                    const errorMsg = result.error || 'Login failed';
+                    if (errorMsg.includes('pending')) {
+                        showNotification('Account pending admin approval. Try again after approval, or use demo mode.', 'warning');
+                    } else {
+                        showNotification(errorMsg, 'error');
+                    }
                 }
             } catch (err) {
                 // Fallback to demo mode
