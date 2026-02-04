@@ -599,9 +599,40 @@
                 </select>
                 <input type="password" id="loginPassword" placeholder="Password" required>
                 <button type="submit" class="login-btn">Login</button>
+                <button type="button" class="login-btn" style="background: var(--secondary); margin-top: 10px;" onclick="toggleSignup()">
+                    Create Account
+                </button>
             </form>
             <p style="margin-top: 20px; font-size: 0.9rem; color: var(--gray);">
                 Demo: Use username "admin" or "staff" with any password
+            </p>
+        </div>
+    </div>
+
+    <!-- Sign Up Page -->
+    <div id="signupPage" class="login-container" style="display: none;">
+        <div class="login-box">
+            <i class="fas fa-user-plus" style="font-size: 3rem; color: var(--secondary); margin-bottom: 20px;"></i>
+            <h1>Create Account</h1>
+            <p>Register to access MMGH System</p>
+            <form id="signupForm" class="login-form">
+                <input type="text" id="signupUsername" placeholder="Username" required>
+                <input type="email" id="signupEmail" placeholder="Email Address" required>
+                <input type="text" id="signupFullName" placeholder="Full Name" required>
+                <select id="signupRole" required>
+                    <option value="">Select Role</option>
+                    <option value="admin">Administrator</option>
+                    <option value="staff">Staff Member</option>
+                </select>
+                <input type="password" id="signupPassword" placeholder="Password (min 6 chars)" required minlength="6">
+                <input type="password" id="signupConfirm" placeholder="Confirm Password" required minlength="6">
+                <button type="submit" class="login-btn">Sign Up</button>
+                <button type="button" class="login-btn" style="background: var(--gray); margin-top: 10px;" onclick="toggleSignup()">
+                    Back to Login
+                </button>
+            </form>
+            <p style="margin-top: 20px; font-size: 0.85rem; color: var(--gray); text-align: left;">
+                <strong>Note:</strong> After registration, your account will be pending admin approval. You'll receive an email once approved.
             </p>
         </div>
     </div>
@@ -672,6 +703,9 @@
             </div>
             <div class="tab" data-tab="staff">
                 <i class="fas fa-user-nurse"></i> Staff
+            </div>
+            <div id="adminTabContainer" class="tab" data-tab="admin" style="display: none;">
+                <i class="fas fa-cog"></i> Admin Panel
             </div>
         </div>
         
@@ -807,6 +841,72 @@
                         <!-- Staff data will be populated here -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Admin Panel Tab -->
+        <div id="admin" class="tab-content">
+            <div class="section-title">
+                <h2><i class="fas fa-cog"></i> Administration Panel</h2>
+            </div>
+
+            <div style="display: flex; gap: 20px; margin-bottom: 30px;">
+                <button class="btn btn-primary" onclick="switchAdminTab('pending-users')" id="pendingUsersBtn">
+                    <i class="fas fa-user-clock"></i> Pending Approvals
+                </button>
+                <button class="btn btn-primary" onclick="switchAdminTab('user-management')">
+                    <i class="fas fa-users-cog"></i> User Management
+                </button>
+                <button class="btn btn-primary" onclick="switchAdminTab('audit-logs')">
+                    <i class="fas fa-history"></i> Audit Logs
+                </button>
+            </div>
+
+            <!-- Pending Users Section -->
+            <div id="pendingUsersSection" class="admin-section">
+                <h3>Pending User Approvals</h3>
+                <div id="pendingUsersList" style="margin-top: 20px;"></div>
+            </div>
+
+            <!-- User Management Section -->
+            <div id="userManagementSection" class="admin-section" style="display: none;">
+                <h3>All Users</h3>
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="searchUsers" placeholder="Search users...">
+                </div>
+                <table id="usersTable" style="width: 100%; margin-top: 20px;">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Full Name</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Joined</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody"></tbody>
+                </table>
+            </div>
+
+            <!-- Audit Logs Section -->
+            <div id="auditLogsSection" class="admin-section" style="display: none;">
+                <h3>Activity Logs</h3>
+                <div style="margin-top: 20px; max-height: 600px; overflow-y: auto;">
+                    <table id="auditTable" style="width: 100%;">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -1157,6 +1257,7 @@
         // User authentication state
         let currentUser = null;
         let userRole = null; // 'admin' or 'staff'
+        let userToken = null; // JWT token from server
 
         // Role-based permissions
         const permissions = {
@@ -1190,33 +1291,116 @@
             return permissions[userRole][action] || false;
         }
 
+        // Toggle between login and signup
+        function toggleSignup() {
+            document.getElementById('loginPage').style.display = document.getElementById('loginPage').style.display === 'none' ? 'flex' : 'none';
+            document.getElementById('signupPage').style.display = document.getElementById('signupPage').style.display === 'none' ? 'flex' : 'none';
+        }
+
+        // Sign up handler
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const password = document.getElementById('signupPassword').value;
+            const confirm = document.getElementById('signupConfirm').value;
+            
+            if (password !== confirm) {
+                showNotification('Passwords do not match', 'error');
+                return;
+            }
+
+            const data = {
+                username: document.getElementById('signupUsername').value,
+                email: document.getElementById('signupEmail').value,
+                fullName: document.getElementById('signupFullName').value,
+                password: password,
+                role: document.getElementById('signupRole').value
+            };
+
+            try {
+                const res = await fetch('/api/auth/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await res.json();
+
+                if (res.ok) {
+                    showNotification('Sign up successful! Please wait for admin approval. Check your email.', 'success');
+                    setTimeout(() => toggleSignup(), 2000);
+                    document.getElementById('signupForm').reset();
+                } else {
+                    showNotification(result.error || 'Sign up failed', 'error');
+                }
+            } catch (err) {
+                showNotification('Sign up error: ' + err.message, 'error');
+            }
+        });
+
         // Login handler
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const username = document.getElementById('loginUsername').value;
-            const role = document.getElementById('loginRole').value;
             const password = document.getElementById('loginPassword').value;
+            const role = document.getElementById('loginRole').value;
 
-            if (username && role && password) {
+            // Check if server is available
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await res.json();
+
+                if (res.ok) {
+                    currentUser = username;
+                    userRole = result.user.role;
+                    userToken = result.token;
+                    
+                    localStorage.setItem('currentUser', username);
+                    localStorage.setItem('userRole', result.user.role);
+                    localStorage.setItem('userToken', result.token);
+                    
+                    document.getElementById('loginPage').style.display = 'none';
+                    document.getElementById('mainApp').classList.add('show');
+                    document.getElementById('currentUserName').textContent = username;
+                    document.getElementById('currentUserRole').textContent = result.user.role.charAt(0).toUpperCase() + result.user.role.slice(1);
+                    document.getElementById('roleDisplay').textContent = result.user.role === 'admin' ? 'Administrator' : 'Staff Member';
+                    
+                    if (userRole === 'admin') {
+                        document.getElementById('adminTabContainer').style.display = 'flex';
+                    }
+                    
+                    loadData();
+                    updatePermissions();
+                    showNotification(`Welcome ${username}!`, 'success');
+                } else {
+                    showNotification(result.error || 'Login failed', 'error');
+                }
+            } catch (err) {
+                // Fallback to demo mode
                 currentUser = username;
                 userRole = role;
                 
-                // Save auth state
                 localStorage.setItem('currentUser', username);
                 localStorage.setItem('userRole', role);
                 
-                // Show main app
                 document.getElementById('loginPage').style.display = 'none';
                 document.getElementById('mainApp').classList.add('show');
-                
-                // Update UI
                 document.getElementById('currentUserName').textContent = username;
                 document.getElementById('currentUserRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
                 document.getElementById('roleDisplay').textContent = role === 'admin' ? 'Administrator' : 'Staff Member';
                 
+                if (userRole === 'admin') {
+                    document.getElementById('adminTabContainer').style.display = 'flex';
+                }
+                
                 loadData();
                 updatePermissions();
-                showNotification(`Welcome ${username}! Logged in as ${role}`, 'success');
+                showNotification(`Demo mode: Welcome ${username}!`);
             }
         });
 
@@ -1224,44 +1408,174 @@
         function logout() {
             currentUser = null;
             userRole = null;
+            userToken = null;
             localStorage.removeItem('currentUser');
             localStorage.removeItem('userRole');
+            localStorage.removeItem('userToken');
             
             document.getElementById('loginPage').style.display = 'flex';
             document.getElementById('mainApp').classList.remove('show');
+            document.getElementById('signupPage').style.display = 'none';
             document.getElementById('loginForm').reset();
             showNotification('Logged out successfully', 'success');
         }
 
-        // Update UI based on permissions
-        function updatePermissions() {
-            // Disable/enable buttons based on role
-            const deleteButtons = document.querySelectorAll('.delete-btn');
-            const editButtons = document.querySelectorAll('.edit-btn');
-            
-            if (userRole === 'staff') {
-                deleteButtons.forEach(btn => btn.disabled = true);
+        // Admin functions
+        async function loadPendingUsers() {
+            try {
+                const token = localStorage.getItem('userToken');
+                if (!token) return;
+
+                const res = await fetch('/api/admin/pending-users', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) return;
+
+                const users = await res.json();
+                const container = document.getElementById('pendingUsersList');
+
+                if (users.length === 0) {
+                    container.innerHTML = '<p style="color: var(--gray); text-align: center;">No pending approvals</p>';
+                    return;
+                }
+
+                container.innerHTML = users.map(u => `
+                    <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 12px; border-left: 4px solid var(--warning);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <p style="margin: 0; font-weight: 600;">${u.full_name} (${u.username})</p>
+                                <p style="margin: 5px 0 0 0; font-size: 0.9rem; color: var(--gray);">${u.email} • ${u.role}</p>
+                                <p style="margin: 3px 0 0 0; font-size: 0.85rem; color: var(--gray);">Applied: ${new Date(u.created_at).toLocaleDateString()}</p>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn btn-success" onclick="approveUser(${u.id})" style="padding: 8px 16px; font-size: 0.9rem;">
+                                    <i class="fas fa-check"></i> Approve
+                                </button>
+                                <button class="btn btn-danger" onclick="rejectUser(${u.id})" style="padding: 8px 16px; font-size: 0.9rem;">
+                                    <i class="fas fa-times"></i> Reject
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Error loading pending users:', err);
             }
         }
 
-        // Check if user is logged in on page load
-        function checkAuth() {
-            const savedUser = localStorage.getItem('currentUser');
-            const savedRole = localStorage.getItem('userRole');
-            
-            if (savedUser && savedRole) {
-                currentUser = savedUser;
-                userRole = savedRole;
-                
-                document.getElementById('loginPage').style.display = 'none';
-                document.getElementById('mainApp').classList.add('show');
-                document.getElementById('currentUserName').textContent = currentUser;
-                document.getElementById('currentUserRole').textContent = savedRole.charAt(0).toUpperCase() + savedRole.slice(1);
-                document.getElementById('roleDisplay').textContent = savedRole === 'admin' ? 'Administrator' : 'Staff Member';
-                
-                loadData();
-                updatePermissions();
+        async function approveUser(userId) {
+            try {
+                const token = localStorage.getItem('userToken');
+                const res = await fetch(`/api/admin/approve-user/${userId}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (res.ok) {
+                    showNotification('User approved! Approval email sent.', 'success');
+                    loadPendingUsers();
+                    loadAllUsers();
+                } else {
+                    showNotification('Approval failed', 'error');
+                }
+            } catch (err) {
+                console.error('Approval error:', err);
             }
+        }
+
+        async function rejectUser(userId) {
+            const reason = prompt('Enter rejection reason:');
+            if (!reason) return;
+
+            try {
+                const token = localStorage.getItem('userToken');
+                const res = await fetch(`/api/admin/reject-user/${userId}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ reason })
+                });
+
+                if (res.ok) {
+                    showNotification('User rejected. Rejection email sent.', 'success');
+                    loadPendingUsers();
+                    loadAllUsers();
+                } else {
+                    showNotification('Rejection failed', 'error');
+                }
+            } catch (err) {
+                console.error('Rejection error:', err);
+            }
+        }
+
+        async function loadAllUsers() {
+            try {
+                const token = localStorage.getItem('userToken');
+                if (!token) return;
+
+                const res = await fetch('/api/admin/users', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) return;
+
+                const users = await res.json();
+                const tbody = document.getElementById('usersTableBody');
+                tbody.innerHTML = users.map(u => `
+                    <tr>
+                        <td><strong>${u.username}</strong></td>
+                        <td>${u.email}</td>
+                        <td>${u.full_name}</td>
+                        <td><span style="font-weight: 600;">${u.role}</span></td>
+                        <td><span class="status ${u.status.toLowerCase()}">${u.status}</span></td>
+                        <td>${new Date(u.created_at).toLocaleDateString()}</td>
+                        <td>
+                            ${u.status === 'approved' ? `<span style="font-size: 0.85rem; color: var(--gray);">Approved ${new Date(u.approved_at).toLocaleDateString()}</span>` : '-'}
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Error loading users:', err);
+            }
+        }
+
+        async function loadAuditLogs() {
+            try {
+                const token = localStorage.getItem('userToken');
+                if (!token) return;
+
+                const res = await fetch('/api/admin/audit-logs?limit=100', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) return;
+
+                const logs = await res.json();
+                const tbody = document.getElementById('auditTableBody');
+                tbody.innerHTML = logs.map(l => `
+                    <tr>
+                        <td>${new Date(l.created_at).toLocaleString()}</td>
+                        <td>${l.username || 'System'}</td>
+                        <td><strong>${l.action}</strong></td>
+                        <td style="font-size: 0.9rem; color: var(--gray);">${l.table_name || '—'} ${l.record_id ? ` (${l.record_id})` : ''}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error('Error loading audit logs:', err);
+            }
+        }
+
+        function switchAdminTab(tab) {
+            document.getElementById('pendingUsersSection').style.display = tab === 'pending-users' ? 'block' : 'none';
+            document.getElementById('userManagementSection').style.display = tab === 'user-management' ? 'block' : 'none';
+            document.getElementById('auditLogsSection').style.display = tab === 'audit-logs' ? 'block' : 'none';
+
+            if (tab === 'pending-users') loadPendingUsers();
+            if (tab === 'user-management') loadAllUsers();
+            if (tab === 'audit-logs') loadAuditLogs();
         }
 
         // Load data from server if available, otherwise localStorage
