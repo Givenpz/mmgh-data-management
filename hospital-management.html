@@ -1338,6 +1338,9 @@
         let currentUser = null;
         let userRole = null; // 'admin' or 'staff'
         let userToken = null; // JWT token from server
+        // EventSource handles for real-time updates
+        let adminEventsSource = null;
+        let userEventsSource = null;
         // Pending users retry state
         let pendingUsersRetryAttempt = 0;
         let pendingUsersRetryTimer = null;
@@ -1396,7 +1399,10 @@
                 if (savedRole === 'admin') {
                     document.getElementById('adminTabContainer').style.display = 'flex';
                     // attempt to load pending users if connected to API
-                    if (userToken) loadPendingUsers();
+                    if (userToken) {
+                        loadPendingUsers();
+                        setupAdminSse(userToken);
+                    }
                 }
 
                 loadData();
@@ -1458,20 +1464,29 @@
                 });
 
                 if (res.ok) {
+                    const result = await res.json();
                     useApiMode = true;
+                    // Real-time: subscribe to approval events for this user
+                    try {
+                        const userId = result.user && result.user.id;
+                        if (userId) {
+                            localStorage.setItem('pendingUserId', String(userId));
+                            setupUserSse(userId);
+                        }
+                    } catch (e) { /* ignore SSE errors */ }
+
+                    showNotification('Sign up successful! Please wait for admin approval.', 'success');
+                    setTimeout(() => {
+                        toggleSignup(); // Go back to login
+                        document.getElementById('signupForm').reset();
+                    }, 2000);
                 }
             } catch (err) {
                 // Server unavailable, will use demo mode
             }
 
-            // If API signup succeeded, show success and stay on page
-            if (useApiMode) {
-                showNotification('Sign up successful! Please wait for admin approval.', 'success');
-                setTimeout(() => {
-                    toggleSignup(); // Go back to login
-                    document.getElementById('signupForm').reset();
-                }, 2000);
-            } else {
+            // If API signup succeeded, we've already shown the message and subscribed above.
+            if (!useApiMode) {
                 // Fall back to demo mode - allow signup with any data
                 showNotification('Signup registered! Logging in...', 'success');
                 currentUser = data.username;
@@ -1554,7 +1569,10 @@
                 if (userRole === 'admin') {
                     document.getElementById('adminTabContainer').style.display = 'flex';
                     // load pending users from API if token available
-                    if (userToken) loadPendingUsers();
+                    if (userToken) {
+                        loadPendingUsers();
+                        setupAdminSse(userToken);
+                    }
                 }
                 
                 loadData();
@@ -1594,6 +1612,11 @@
             localStorage.removeItem('userRole');
             localStorage.removeItem('userToken');
             localStorage.removeItem('rememberMe');
+            localStorage.removeItem('pendingUserId');
+
+            // Close SSE connections if any
+            try { if (adminEventsSource) { adminEventsSource.close(); adminEventsSource = null; } } catch(e){}
+            try { if (userEventsSource) { userEventsSource.close(); userEventsSource = null; } } catch(e){}
             
             document.getElementById('loginPage').style.display = 'flex';
             document.getElementById('mainApp').classList.remove('show');
@@ -1603,6 +1626,51 @@
         }
 
         // Admin functions
+        // Setup Server-Sent Events for admin to receive realtime updates
+        function setupAdminSse(token) {
+            try {
+                if (adminEventsSource) return;
+                const url = '/events?token=' + encodeURIComponent(token || '');
+                adminEventsSource = new EventSource(url);
+                adminEventsSource.addEventListener('new_pending_user', (e) => {
+                    // refresh pending users list
+                    if (userRole === 'admin') loadPendingUsers();
+                });
+                adminEventsSource.addEventListener('user_status_changed', (e) => {
+                    if (userRole === 'admin') loadPendingUsers();
+                });
+                adminEventsSource.addEventListener('error', (e) => {
+                    // ignore for now; browser will attempt reconnect
+                });
+            } catch (err) {
+                console.warn('Failed to setup admin SSE', err && err.message);
+            }
+        }
+
+        // Setup SSE for a specific user (to be notified when approved/rejected)
+        function setupUserSse(userId) {
+            try {
+                if (!userId) return;
+                if (userEventsSource) return;
+                const url = '/events?userId=' + encodeURIComponent(userId);
+                userEventsSource = new EventSource(url);
+                userEventsSource.addEventListener('approved', (e) => {
+                    showNotification('Your account has been approved. You can now log in.', 'success');
+                    // close subscription after approval
+                    try { userEventsSource.close(); userEventsSource = null; } catch(e){}
+                    localStorage.removeItem('pendingUserId');
+                });
+                userEventsSource.addEventListener('rejected', (e) => {
+                    let payload = {};
+                    try { payload = JSON.parse(e.data); } catch(_){}
+                    showNotification('Your registration was rejected. ' + (payload.reason || ''), 'error');
+                    try { userEventsSource.close(); userEventsSource = null; } catch(e){}
+                    localStorage.removeItem('pendingUserId');
+                });
+            } catch (err) {
+                console.warn('Failed to setup user SSE', err && err.message);
+            }
+        }
         async function loadPendingUsers() {
             const container = document.getElementById('pendingUsersList');
             // show loading spinner
@@ -2624,6 +2692,11 @@
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
             checkAuth();
+            // If we previously signed up and are waiting approval, resume SSE subscription
+            try {
+                const pendingId = localStorage.getItem('pendingUserId');
+                if (pendingId) setupUserSse(pendingId);
+            } catch (e) {}
             
             // Set today's date as default in appointment modal
             document.getElementById('appointmentDate').value = getTodayDate();

@@ -13,6 +13,32 @@ app.use(express.json({ limit: '5mb' }));
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+// Server-Sent Events (SSE) clients
+const adminSseClients = [];
+const userSseClients = new Map(); // userId -> [res,...]
+
+function sendSse(res, event, data) {
+  try {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  } catch (err) {
+    // connection probably closed
+  }
+}
+
+function broadcastToAdmins(event, data) {
+  for (const res of adminSseClients.slice()) {
+    sendSse(res, event, data);
+  }
+}
+
+function notifyUser(userId, event, data) {
+  const list = userSseClients.get(String(userId)) || [];
+  for (const res of list.slice()) {
+    sendSse(res, event, data);
+  }
+}
+
 // Email transporter (configure with your email provider)
 const transporter = nodemailer.createTransport({
   service: process.env.EMAIL_SERVICE || 'gmail',
@@ -110,6 +136,21 @@ app.post('/api/auth/signup', async (req, res) => {
        <p>Email: ${email}</p>
        <p>Please log in to approve or reject this user.</p>`
     );
+
+    // Notify connected admin clients (real-time)
+    try {
+      broadcastToAdmins('new_pending_user', {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.full_name,
+        role: user.role,
+        status: user.status,
+        created_at: user.created_at
+      });
+    } catch (err) {
+      console.warn('SSE broadcast to admins failed:', err && err.message);
+    }
 
     res.json({ 
       message: 'Registration successful! Please wait for admin approval.',
@@ -230,6 +271,14 @@ app.post('/api/admin/approve-user/:userId', verifyToken, async (req, res) => {
        <p>Visit: ${process.env.APP_URL || 'http://localhost:3000'}</p>`
     );
 
+    // Notify specific user (if connected) and broadcast status change
+    try {
+      notifyUser(userId, 'approved', { message: 'Your account has been approved' });
+      broadcastToAdmins('user_status_changed', { id: userId, status: 'approved' });
+    } catch (err) {
+      console.warn('SSE notify on approve failed:', err && err.message);
+    }
+
     res.json({ message: 'User approved successfully' });
   } catch (err) {
     res.status(500).json({ error: 'Approval failed' });
@@ -270,6 +319,14 @@ app.post('/api/admin/reject-user/:userId', verifyToken, async (req, res) => {
        <p>Reason: ${reason}</p>
        <p>Contact the administrator for more information.</p>`
     );
+
+    // Notify specific user (if connected) and broadcast status change
+    try {
+      notifyUser(userId, 'rejected', { message: 'Your account registration was rejected', reason });
+      broadcastToAdmins('user_status_changed', { id: userId, status: 'rejected' });
+    } catch (err) {
+      console.warn('SSE notify on reject failed:', err && err.message);
+    }
 
     res.json({ message: 'User rejected' });
   } catch (err) {
@@ -331,6 +388,64 @@ app.get('/api/data', async (req, res) => {
     console.error('Error fetching data', err);
     res.status(500).json({ error: 'Error fetching data' });
   }
+});
+
+// Server-Sent Events endpoint for real-time notifications
+app.get('/events', (req, res) => {
+  let { role, userId, token } = req.query;
+
+  // If token provided, verify and derive role/userId
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      role = decoded.role;
+      // if user role, derive userId from token
+      if (decoded && decoded.id) userId = decoded.id;
+    } catch (err) {
+      console.warn('SSE token verify failed:', err && err.message);
+      // continue without token-derived identity
+    }
+  }
+
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders && res.flushHeaders();
+
+  // Send initial ping
+  sendSse(res, 'connected', { role: role || 'guest', timestamp: Date.now() });
+
+  if (role === 'admin') {
+    adminSseClients.push(res);
+  } else if (userId) {
+    const key = String(userId);
+    const list = userSseClients.get(key) || [];
+    list.push(res);
+    userSseClients.set(key, list);
+  }
+
+  // Cleanup on close
+  req.on('close', () => {
+    try {
+      if (role === 'admin') {
+        const idx = adminSseClients.indexOf(res);
+        if (idx !== -1) adminSseClients.splice(idx, 1);
+      }
+      if (userId) {
+        const key = String(userId);
+        const list = userSseClients.get(key) || [];
+        const idx = list.indexOf(res);
+        if (idx !== -1) {
+          list.splice(idx, 1);
+          if (list.length === 0) userSseClients.delete(key);
+          else userSseClients.set(key, list);
+        }
+      }
+    } catch (err) {
+      // ignore
+    }
+  });
 });
 
 // Bulk replace (overwrite)
