@@ -1384,8 +1384,8 @@
             const rememberMe = localStorage.getItem('rememberMe');
             const savedToken = localStorage.getItem('userToken');
             
-            // Restore session if user was remembered OR a valid token exists
-            if (savedUser && savedRole && (rememberMe === 'true' || savedToken)) {
+            // Restore session only if a valid token exists (prevent restoring demo-only sessions)
+            if (savedUser && savedRole && savedToken) {
                 currentUser = savedUser;
                 userRole = savedRole;
                 userToken = savedToken || null;
@@ -1579,27 +1579,10 @@
                 updatePermissions();
                 showNotification(`Welcome ${username}! (Connected to database)`, 'success');
             } else {
-                // Fall back to demo mode - allow any username/password combination
-                currentUser = username;
-                userRole = role;
-                
-                localStorage.setItem('currentUser', username);
-                localStorage.setItem('userRole', role);
-                localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false');
-                
-                document.getElementById('loginPage').style.display = 'none';
-                document.getElementById('mainApp').classList.add('show');
-                document.getElementById('currentUserName').textContent = username;
-                document.getElementById('currentUserRole').textContent = role.charAt(0).toUpperCase() + role.slice(1);
-                document.getElementById('roleDisplay').textContent = role === 'admin' ? 'Administrator' : 'Staff Member';
-                
-                if (userRole === 'admin') {
-                    document.getElementById('adminTabContainer').style.display = 'flex';
-                }
-                
-                loadData();
-                updatePermissions();
-                showNotification(`Demo mode: Welcome ${username}! (Server offline - using demo data)`, 'info');
+                // Do not auto-login when API is unavailable or credentials invalid.
+                // Require a valid server response to authenticate.
+                showNotification('Login failed: invalid credentials or server unavailable. Please sign up or try again later.', 'error');
+                return;
             }
         });
 
